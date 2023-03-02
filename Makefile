@@ -24,4 +24,8 @@ eqc:
 	$(REBAR) as test eqc --testing_budget 120
 	$(REBAR) as eqc eunit
 
-check: test dialyzer xref
+check: test ct dialyzer xref
+
+.PHONY: ct
+ct:
+	$(REBAR) as test ct --name test@127.0.0.1

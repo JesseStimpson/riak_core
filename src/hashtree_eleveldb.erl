@@ -13,17 +13,7 @@
          iterator_move/2,
          iterator_close/1]).
 
--dialyzer({nowarn_function, [open/1,
-                             close/1,
-                             destroy/1,
-                             get/2,
-                             put/3,
-                             write/2,
-                             delete/2,
-                             fold/4,
-                             iterator/1,
-                             iterator_move/2,
-                             iterator_close/1]}).
+-ignore_xref([eleveldb]).
 
 open(Path) ->
     DefaultWriteBufferMin = 4 * 1024 * 1024,

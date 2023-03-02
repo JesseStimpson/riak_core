@@ -143,13 +143,22 @@ ensure_vnodes_started({App,Mod}, Ring) ->
                        ok = riak_core:wait_for_application(App),
 
                        %% Start the vnodes.
+                       Exports = Mod:module_info(exports),
                        HasStartVnodes = lists:member({start_vnodes, 1},
-                                                     Mod:module_info(exports)),
+                                                     Exports),
                        case HasStartVnodes of
                            true ->
                                Mod:start_vnodes(Startable);
                            false ->
-                               [Mod:start_vnode(I) || I <- Startable]
+                               HasStartVnode = lists:member({start_vnode, 1},
+                                                            Exports),
+                               case HasStartVnode of
+                                   true ->
+                                       [Mod:start_vnode(I) || I <- Startable];
+                                   false ->
+                                       % Default start_vnode. The start_vnode behaviour callback is optional
+                                       [ riak_core_vnode_master:start_vnode(I, Mod) || I <- Startable ]
+                               end
                        end,
 
                        %% Mark the service as up.

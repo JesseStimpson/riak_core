@@ -137,6 +137,16 @@
 
 -callback delete(ModState::term()) -> {ok, NewModState::term()}.
 
+-optional_callbacks([
+                     is_empty/1,            % default: false
+                     handoff_starting/2,    % default: true
+                     handoff_cancelled/1,
+                     handoff_finished/2,
+                     delete/1,
+                     terminate/2,
+                     handle_exit/3
+                    ]).
+
 %% handle_exit/3 is an optional behaviour callback that can be implemented.
 %% It will be called in the case that a process that is linked to the vnode
 %% process dies and allows the module using the behaviour to take appropriate
@@ -555,7 +565,7 @@ active({resize_transfer_complete, SeenIdxs}, State=#state{mod=Mod,
         none -> continue(State);
         _ ->
             %% TODO: refactor similarties w/ finish_handoff handle_event
-            {ok, NewModState} = Mod:handoff_finished(Target, ModState),
+            {ok, NewModState} = exec_with_def(Mod, handoff_finished, [Target, ModState], fun() -> {ok, ModState} end),
             finish_handoff(SeenIdxs, State#state{modstate=NewModState})
     end;
 active({handoff_error, _Err, _Reason}, State) ->
@@ -571,7 +581,7 @@ active({trigger_handoff, TargetIdx, TargetNode}, State) ->
 active(trigger_delete, State=#state{mod=Mod,modstate=ModState,index=Idx}) ->
     case mark_delete_complete(Idx, Mod) of
         {ok, _NewRing} ->
-            {ok, NewModState} = Mod:delete(ModState),
+            {ok, NewModState} = exec_with_def(Mod, delete, [ModState], fun() -> {ok, ModState} end),
             ?LOG_DEBUG("~p ~p vnode deleted", [Idx, Mod]);
         _ -> NewModState = ModState
     end,
@@ -700,7 +710,7 @@ finish_handoff(SeenIdxs, State=#state{mod=Mod,
             %% Shutdown the async pool beforehand, don't want callbacks
             %% running on non-existant data.
             maybe_shutdown_pool(State),
-            {ok, NewModState} = Mod:delete(ModState),
+            {ok, NewModState} = exec_with_def(Mod, delete, [ModState], fun() -> {ok, ModState} end),
             ?LOG_DEBUG("~p ~p vnode finished handoff and deleted.",
                         [Idx, Mod]),
             riak_core_vnode_manager:unregister_vnode(Idx, Mod),
@@ -770,7 +780,7 @@ handle_event(finish_handoff, _StateName, State=#state{mod=Mod,
         none ->
             continue(State);
         _ ->
-            {ok, NewModState} = Mod:handoff_finished(Target, ModState),
+            {ok, NewModState} = exec_with_def(Mod, handoff_finished, [Target, ModState], fun() -> {ok, ModState} end),
             finish_handoff(State#state{modstate=NewModState})
     end;
 handle_event(cancel_handoff, _StateName, State=#state{mod=Mod,
@@ -782,7 +792,7 @@ handle_event(cancel_handoff, _StateName, State=#state{mod=Mod,
         none ->
             continue(State);
         _ ->
-            {ok, NewModState} = Mod:handoff_cancelled(ModState),
+            {ok, NewModState} = exec_with_def(Mod, handoff_cancelled, [ModState], fun() -> {ok, ModState} end),
             continue(State#state{handoff_target=none,
                                  handoff_type=undefined,
                                  modstate=NewModState})
@@ -948,9 +958,9 @@ terminate(Reason, _StateName, #state{mod=Mod, modstate=ModState,
         case ModState of
             %% Handoff completed, Mod:delete has been called, now terminate.
             {deleted, ModState1} ->
-                Mod:terminate(Reason, ModState1);
+                exec_with_def(Mod, terminate, [Reason, ModState1], fun() -> ok end);
             _ ->
-                Mod:terminate(Reason, ModState)
+                exec_with_def(Mod, terminate, [Reason, ModState], fun() -> ok end)
         end
     end.
 
@@ -986,7 +996,7 @@ maybe_handoff(TargetIdx, TargetNode,
                          {_, true} -> ownership;
                          {_, false} -> hinted
                      end,
-            case Mod:handoff_starting({HOType, Target}, ModState) of
+            case exec_with_def(Mod, handoff_starting, [{HOType, Target}, ModState], fun() -> {true, ModState} end) of
                 {true, NewModState} ->
                     start_handoff(HOType, TargetIdx, TargetNode,State#state{modstate=NewModState});
                 {false, NewModState} ->
@@ -998,7 +1008,7 @@ maybe_handoff(TargetIdx, TargetNode,
 
 start_handoff(HOType, TargetIdx, TargetNode,
               State=#state{mod=Mod, modstate=ModState}) ->
-    case Mod:is_empty(ModState) of
+    case exec_with_def(Mod, is_empty, [ModState], fun() -> {false, ModState} end) of
         {true, NewModState} ->
             finish_handoff(State#state{modstate=NewModState,
                                        handoff_type=HOType,
@@ -1021,7 +1031,7 @@ start_outbound(HOType, TargetIdx, TargetNode, Opts, State=#state{index=Idx,mod=M
                         handoff_type=HOType,
                         handoff_target={TargetIdx, TargetNode}};
         {error,_Reason} ->
-            {ok, NewModState} = Mod:handoff_cancelled(State#state.modstate),
+            {ok, NewModState} = exec_with_def(Mod, handoff_cancelled, [State#state.modstate], fun() -> {ok, State#state.modstate} end),
             State#state{modstate=NewModState}
     end.
 
@@ -1115,6 +1125,14 @@ queue_work(PoolName, Work, From, VnodeWrkPool) ->
             riak_core_vnode_worker_pool:handle_work(VnodeWrkPool, Work, From);
         _P ->
             riak_core_node_worker_pool:handle_work(PoolName0, Work, From)
+    end.
+
+exec_with_def(Mod, Func, Arguments, Default) ->
+    case lists:member({Func, length(Arguments)}, Mod:module_info(exports)) of
+        true ->
+            erlang:apply(Mod, Func, Arguments);
+        false ->
+            Default()
     end.
 
 %% ===================================================================

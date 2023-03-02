@@ -456,8 +456,9 @@ create_node(?ROOT, Tree) ->
     Opts = [{segment_path, NodePath}, {segments, NumSegs}, {width, Width}],
     %% destroy any data that previously existed because its lingering from
     %% a tree that was not properly destroyed
-    ok = hashtree:destroy(NodePath),
-    Node = hashtree:new(NodeId, Opts),
+    Mod = get_env(hashtree_storage, hashtree_dets),
+    ok = hashtree:destroy(Mod, NodePath),
+    Node = hashtree:new(NodeId, [{storage, Mod}|Opts]),
     set_node(?ROOT, Node, Tree);
 create_node([], Tree) ->
     create_node(?ROOT, Tree);
@@ -468,7 +469,7 @@ create_node(NodeName, Tree) ->
     Width = node_width(NodeName),
     Opts = [{segments, NumSegs}, {width, Width}],
     %% share segment store accross all nodes
-    Node = hashtree:new(NodeId, RootNode, Opts),
+    Node = hashtree:new(NodeId, RootNode, [{storage, get_env(hashtree_storage, hashtree_dets)}|Opts]),
     set_node(NodeName, Node, Tree).
 
 %% @private
@@ -565,3 +566,8 @@ data_root(Opts) ->
             filename:join(Base, riak_core_util:integer_to_list(P, 16));
         Root -> Root
     end.
+
+get_env(Key, Default) ->
+    CoreEnv = app_helper:get_env(riak_core, Key, Default),
+    app_helper:get_env(riak_kv, Key, CoreEnv).
+

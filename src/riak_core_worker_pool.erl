@@ -317,10 +317,10 @@ handle_info(_Info, StateName, State) ->
 terminate(shutdown, _StateName, #state{pool=Pool, queue=Q, callback_mod=Mod}) ->
     discard_queued_work(Q, Mod),
     %% stop poolboy
-    gen_fsm:sync_send_all_state_event(Pool, stop),
+    poolboy_stop(Pool),
     ok;
 terminate(_Reason, _StateName, #state{pool=Pool}) ->
-    gen_fsm:sync_send_all_state_event(Pool, stop),
+    poolboy_stop(Pool),
     ok.
 
 code_change(_OldVsn, StateName, State, _Extra) ->
@@ -387,6 +387,10 @@ poolboy_checkout(Pool, PoolName, Checkouts) ->
                                     0}),
             {P, [{P, os:timestamp()}|Checkouts]}
     end.
+
+-spec poolboy_stop(pid()) -> ok.
+poolboy_stop(Pool) ->
+    poolboy:stop(Pool).
 
 do_work(Pid, Work, From, Mod) ->
     Mod:do_work(Pid, Work, From).

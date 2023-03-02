@@ -60,7 +60,6 @@ simple_worker_pool() ->
     timer:sleep(1200),
 
     %% make sure we got all the expected responses
-
     [ ?assertEqual(true, receive_result(N)) || N <- lists:seq(1, 10)],
     unlink(Pool),
     riak_core_vnode_worker_pool:stop(Pool, normal).

@@ -137,6 +137,8 @@
 
 -callback delete(ModState::term()) -> {ok, NewModState::term()}.
 
+-callback handle_info(Info::term(), ModState::term()) -> {noreply, NewModState::term()}.
+
 -optional_callbacks([
                      is_empty/1,            % default: false
                      handoff_starting/2,    % default: true
@@ -144,7 +146,8 @@
                      handoff_finished/2,
                      delete/1,
                      terminate/2,
-                     handle_exit/3
+                     handle_exit/3,
+                     handle_info/2
                     ]).
 
 %% handle_exit/3 is an optional behaviour callback that can be implemented.

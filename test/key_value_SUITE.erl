@@ -39,7 +39,6 @@ start_node(Name, Host, WebPort, HandoffPort) ->
     ok = rpc:call(Node, application, set_env, [riak_core, platform_data_dir, DataDir]),
     ok = rpc:call(Node, application, set_env, [riak_core, web_port, WebPort]),
     ok = rpc:call(Node, application, set_env, [riak_core, handoff_port, HandoffPort]),
-    ok = rpc:call(Node, application, set_env, [riak_core, schema_dirs, ["../../lib/riak_core/priv"]]),
     ok = rpc:call(Node, application, set_env, [riak_core, vnode_management_timer, 10]),
     ok = rpc:call(Node, application, set_env, [riak_core, handoff_concurrency, 100]),
     ok = rpc:call(Node, application, set_env, [riak_core, gossip_interval, 10]),
@@ -47,7 +46,6 @@ start_node(Name, Host, WebPort, HandoffPort) ->
     ok = rpc:call(Node, application, set_env, [riak_core, ring_creation_size, 64]),
 
     {ok, _} = rpc:call(Node, application, ensure_all_started, [compiler]),
-    {ok, _} = rpc:call(Node, application, ensure_all_started, [cuttlefish]),
     {ok, _} = rpc:call(Node, application, ensure_all_started, [riak_core]),
     {ok, _} = rpc:call(Node, key_value_example, start, []),
 

@@ -48,7 +48,6 @@
          set_limits/3,
          get_limits/2,
          clear_limits/2,
-         create_limits_translator_fun/2,
          set_throttle_by_load/3,
          throttle/2]).
 
@@ -180,71 +179,6 @@ get_limits(AppName, Key) ->
 -spec clear_limits(app_name(), activity_key()) -> ok.
 clear_limits(AppName, Key) ->
     unset_value(AppName, ?THROTTLE_LIMITS_KEY(Key)).
-
-%% @doc Returns a fun that used in Cuttlefish translations to translate from
-%% configuration items of the form:
-%%  `ConfigPrefix'.throttle.tier1.`LoadFactorMeasure'
-%% to the list of tuples form expected by the `set_limits/2' function in this
-%% module. See riak_kv.schema and yokozuna.schema for example usages.
-create_limits_translator_fun(ConfigPrefix, LoadFactorMeasure) ->
-    fun(Conf) ->
-            %% Grab all of the possible names of tiers so we can ensure that
-            %% both LoadFactorMeasure and delay are included for each tier.
-            CfgPrefix = cuttlefish_variable:tokenize(ConfigPrefix),
-            Prefix = flat_concat([CfgPrefix, "throttle", "$tier"]),
-            LoadFactorTierNames = cuttlefish_variable:fuzzy_matches(
-                                    flat_concat([Prefix, LoadFactorMeasure]),
-                                    Conf),
-            DelayTierNames = cuttlefish_variable:fuzzy_matches(
-                               flat_concat([Prefix, "delay"]), Conf),
-            TierNames = lists:usort(LoadFactorTierNames ++ DelayTierNames),
-
-            Throttles = get_throttles(Conf, CfgPrefix, TierNames, LoadFactorMeasure),
-
-            case Throttles of
-                %% -1 is a magic "minimum" bound and must be included, so if it
-                %% isn't present we call it invalid
-                [{-1,_}|_] ->
-                    Throttles;
-                _ ->
-                    Msg = ConfigPrefix
-                        ++ ".throttle tiers must include a tier with "
-                        ++ LoadFactorMeasure
-                        ++ " 0",
-                    cuttlefish:invalid(Msg)
-            end
-    end.
-
-%% @private
-%% Concatenates all of the individual elements in `ListOfLists' into a single
-%% list, flattening one level if necessary.
-flat_concat(ListOfLists) when is_list(ListOfLists)->
-    lists:foldl(
-      fun(X, Acc) ->
-              case length(X) == lists:flatlength(X) of
-                  true ->
-                      lists:append(Acc, [X]);
-                  false ->
-                      lists:append(Acc, X)
-              end
-      end,
-      [],
-      ListOfLists).
-
-get_throttles(Conf, ConfigPrefix, TierNames, LoadFactorMeasure) ->
-    lists:sort(
-      lists:foldl(
-        fun({"$tier", Tier}, Settings) ->
-                TierPrefix = flat_concat([ConfigPrefix, "throttle", Tier]),
-                LoadFactorValue = cuttlefish:conf_get(
-                                    flat_concat([TierPrefix, LoadFactorMeasure]),
-                                    Conf),
-                Delay =
-                cuttlefish:conf_get( flat_concat([TierPrefix, "delay"]), Conf),
-                [{LoadFactorValue - 1, Delay} | Settings]
-        end,
-        [],
-        TierNames)).
 
 %% @doc <p>Sets the throttle for the activity identified by `AppName' and `Key'
 %% to a value determined by consulting the limits for the activity. The
